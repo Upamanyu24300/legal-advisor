@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import load_vector_store, create_rag_chain
+from utils import load_vector_store, create_rag_chain, create_enhanced_rag_response, LANGUAGES
 import time
 
 # Set page configuration
@@ -16,6 +16,12 @@ st.markdown("""
     body.classList.add('dark');
 </script>
 """, unsafe_allow_html=True)
+
+# Initialize session state for chat history and language
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "language" not in st.session_state:
+    st.session_state.language = "English"
 
 # Custom CSS for better styling with dark mode support
 st.markdown("""
@@ -106,13 +112,37 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# App title and description
-st.markdown('<div class="main-header"><h1>🇮🇳 Indian Legal Assistant</h1></div>', unsafe_allow_html=True)
-st.markdown('<div class="description">This chatbot provides guidance on Indian legal matters based on the Constitution of India, landmark Supreme Court cases, and other legal documents.</div>', unsafe_allow_html=True)
+# Multilingual titles and descriptions
+titles = {
+    "English": "🇮🇳 Indian Legal Assistant",
+    "Hindi": "🇮🇳 भारतीय कानूनी सहायक",
+    "Bengali": "🇮🇳 ভারতীয় আইনি সহায়ক"
+}
 
-# Initialize session state for chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+descriptions = {
+    "English": "This chatbot provides guidance on Indian legal matters based on the Constitution of India, landmark Supreme Court cases, and other legal documents.",
+    "Hindi": "यह चैटबॉट भारतीय संविधान, सुप्रीम कोर्ट के ऐतिहासिक मामलों और अन्य कानूनी दस्तावेजों के आधार पर भारतीय कानूनी मामलों पर मार्गदर्शन प्रदान करता है।",
+    "Bengali": "এই চ্যাটবট ভারতীয় সংবিধান, সুপ্রিম কোর্টের ঐতিহাসিক মামলা এবং অন্যান্য আইনি নথির ভিত্তিতে ভারতীয় আইনি বিষয়ে নির্দেশনা প্রদান করে।"
+}
+
+# App title and description
+st.markdown(f'<div class="main-header"><h1>{titles.get(st.session_state.language, titles["English"])}</h1></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="description">{descriptions.get(st.session_state.language, descriptions["English"])}</div>', unsafe_allow_html=True)
+
+# Language selector in sidebar
+with st.sidebar:
+    st.markdown('<div class="sidebar-header">Language / भाषा / ভাষা</div>', unsafe_allow_html=True)
+    selected_language = st.selectbox(
+        "Choose your language:",
+        options=list(LANGUAGES.keys()),
+        format_func=lambda x: f"{LANGUAGES[x]} {x}",
+        index=list(LANGUAGES.keys()).index(st.session_state.language)
+    )
+    
+    # Update session state if language changed
+    if selected_language != st.session_state.language:
+        st.session_state.language = selected_language
+        st.rerun()
 
 # Load vector store and create retriever
 @st.cache_resource
@@ -140,9 +170,46 @@ for message in st.session_state.messages:
     role_class = "user-message" if message["role"] == "user" else "assistant-message"
     with st.chat_message(message["role"]):
         st.markdown(f"<div class='{role_class}' style='color: inherit;'>{message['content']}</div>", unsafe_allow_html=True)
+        
+        # Display references for assistant messages
+        if message["role"] == "assistant" and "references" in message:
+            references = message["references"]
+            if references:
+                reference_labels = {
+                    "English": "📚 References",
+                    "Hindi": "📚 संदर्भ",
+                    "Bengali": "📚 তথ্যসূত্র"
+                }
+                st.markdown(f"**{reference_labels.get(st.session_state.language, '📚 References')}:**")
+                
+                for ref in references:
+                    st.markdown(f"""
+                    <div style="
+                        border: 1px solid #e0e0e0;
+                        border-radius: 8px;
+                        padding: 12px;
+                        margin: 8px 0;
+                        background-color: #f8f9fa;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">
+                        <div style="font-weight: bold; color: #1f2937; margin-bottom: 8px;">
+                            📖 {ref['document']}
+                        </div>
+                        <div style="color: #4b5563; font-size: 0.9em; line-height: 1.4;">
+                            {ref['content']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+# Multilingual chat input placeholders
+chat_placeholders = {
+    "English": "Ask about Indian legal matters...",
+    "Hindi": "भारतीय कानूनी मामलों के बारे में पूछें...",
+    "Bengali": "ভারতীয় আইনি বিষয়ে জিজ্ঞাসা করুন..."
+}
 
 # Chat input
-if prompt := st.chat_input("Ask about Indian legal matters..."):
+if prompt := st.chat_input(chat_placeholders.get(st.session_state.language, "Ask about Indian legal matters...")):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
     
@@ -153,22 +220,32 @@ if prompt := st.chat_input("Ask about Indian legal matters..."):
     # Generate response
     with st.chat_message("assistant"):
         if retriever is None:
-            st.markdown("Vector store not found. Please run the ingest.py script first.")
+            error_messages = {
+                "English": "Vector store not found. Please run the ingest.py script first.",
+                "Hindi": "वेक्टर स्टोर नहीं मिला। कृपया पहले ingest.py स्क्रिप्ट चलाएं।",
+                "Bengali": "ভেক্টর স্টোর পাওয়া যায়নি। দয়া করে প্রথমে ingest.py স্ক্রিপ্ট চালান।"
+            }
+            st.markdown(error_messages.get(st.session_state.language, "Vector store not found. Please run the ingest.py script first."))
         else:
-            with st.spinner("Thinking..."):
-                # Create RAG chain with chat history context
-                rag_chain = create_rag_chain(retriever)
-                
+            thinking_messages = {
+        "English": "Thinking...",
+        "Hindi": "सोच रहा हूँ...",
+        "Bengali": "ভাবছি..."
+    }
+    with st.spinner(thinking_messages.get(st.session_state.language, "Thinking...")):
                 # Format chat history for context
                 chat_history = format_chat_history(st.session_state.messages[:-1])  # Exclude current message
                 
                 try:
-                    # Invoke the chain with the prompt and chat history
-                    response = rag_chain.invoke({
-                        "input": prompt,
-                        "chat_history": chat_history
-                    })
+                    # Use enhanced RAG response with references
+                    response = create_enhanced_rag_response(
+                        retriever, 
+                        prompt, 
+                        chat_history, 
+                        st.session_state.language
+                    )
                     answer = response["answer"]
+                    references = response["references"]
                     
                     # Create a placeholder for the typing animation
                     message_placeholder = st.empty()
@@ -183,24 +260,82 @@ if prompt := st.chat_input("Ask about Indian legal matters..."):
                     # Display the final answer
                     message_placeholder.markdown(f"<div class='assistant-message' style='color: inherit;'>{answer}</div>", unsafe_allow_html=True)
                     
+                    # Display references in boxes
+                    if references:
+                        reference_labels = {
+                            "English": "📚 References",
+                            "Hindi": "📚 संदर्भ",
+                            "Bengali": "📚 তথ্যসূত্র"
+                        }
+                        st.markdown(f"**{reference_labels.get(st.session_state.language, '📚 References')}:**")
+                        
+                        for i, ref in enumerate(references, 1):
+                            with st.container():
+                                st.markdown(f"""
+                                <div style="
+                                    border: 1px solid #e0e0e0;
+                                    border-radius: 8px;
+                                    padding: 12px;
+                                    margin: 8px 0;
+                                    background-color: #f8f9fa;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                ">
+                                    <div style="font-weight: bold; color: #1f2937; margin-bottom: 8px;">
+                                        📖 {ref['document']}
+                                    </div>
+                                    <div style="color: #4b5563; font-size: 0.9em; line-height: 1.4;">
+                                        {ref['content']}
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    
                     # Add assistant response to chat history
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    st.session_state.messages.append({"role": "assistant", "content": answer, "references": references})
                 except Exception as e:
-                    st.error(f"Error generating response: {e}")
+                    error_messages = {
+                        "English": f"Error generating response: {e}",
+                        "Hindi": f"उत्तर उत्पन्न करने में त्रुटि: {e}",
+                        "Bengali": f"উত্তর তৈরিতে ত্রুটি: {e}"
+                    }
+                    st.error(error_messages.get(st.session_state.language, f"Error generating response: {e}"))
 
 # Sidebar with information and enhanced styling
 with st.sidebar:
     st.markdown('<div class="sidebar-header">About</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-content">This legal assistant uses Retrieval-Augmented Generation (RAG) to provide accurate information about Indian law, drawing from:<br><br>• <b>The Constitution of India</b><br>• <b>Supreme Court landmark judgments</b><br>• <b>High Court cases</b><br>• <b>Legal precedents and statutes</b></div>', unsafe_allow_html=True)
+    about_content = {
+        "English": "This legal assistant uses Retrieval-Augmented Generation (RAG) to provide accurate information about Indian law, drawing from:<br><br>• <b>The Constitution of India</b><br>• <b>Supreme Court landmark judgments</b><br>• <b>High Court cases</b><br>• <b>Legal precedents and statutes</b>",
+        "Hindi": "यह कानूनी सहायक भारतीय कानून के बारे में सटीक जानकारी प्रदान करने के लिए रिट्रीवल-ऑगमेंटेड जेनरेशन (RAG) का उपयोग करता है:<br><br>• <b>भारत का संविधान</b><br>• <b>सुप्रीम कोर्ट के ऐतिहासिक फैसले</b><br>• <b>हाई कोर्ट के मामले</b><br>• <b>कानूनी मिसालें और कानून</b>",
+        "Bengali": "এই আইনি সহায়ক ভারতীয় আইন সম্পর্কে নির্ভুল তথ্য প্রদানের জন্য রিট্রিভাল-অগমেন্টেড জেনারেশন (RAG) ব্যবহার করে:<br><br>• <b>ভারতের সংবিধান</b><br>• <b>সুপ্রিম কোর্টের ঐতিহাসিক রায়</b><br>• <b>হাইকোর্টের মামলা</b><br>• <b>আইনি নজির ও আইন</b>"
+    }
+    st.markdown(f'<div class="sidebar-content">{about_content.get(st.session_state.language, about_content["English"])}</div>', unsafe_allow_html=True)
     
     st.markdown('<div class="sidebar-header">Features</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-content">• Answers questions about Indian law and legal rights<br>• Provides information on legal procedures<br>• Explains constitutional provisions<br>• References relevant court cases<br>• Maintains conversation context</div>', unsafe_allow_html=True)
+    features_content = {
+        "English": "• Answers questions about Indian law and legal rights<br>• Provides information on legal procedures<br>• Explains constitutional provisions<br>• References relevant court cases<br>• Maintains conversation context",
+        "Hindi": "• भारतीय कानून और कानूनी अधिकारों के बारे में प्रश्नों के उत्तर देता है<br>• कानूनी प्रक्रियाओं की जानकारी प्रदान करता है<br>• संवैधानिक प्रावधानों की व्याख्या करता है<br>• संबंधित न्यायालयी मामलों का संदर्भ देता है<br>• बातचीत का संदर्भ बनाए रखता है",
+        "Bengali": "• ভারতীয় আইন ও আইনি অধিকার সম্পর্কে প্রশ্নের উত্তর দেয়<br>• আইনি প্রক্রিয়া সম্পর্কে তথ্য প্রদান করে<br>• সাংবিধানিক বিধান ব্যাখ্যা করে<br>• প্রাসঙ্গিক আদালতের মামলার রেফারেন্স দেয়<br>• কথোপকথনের প্রসঙ্গ বজায় রাখে"
+    }
+    st.markdown(f'<div class="sidebar-content">{features_content.get(st.session_state.language, features_content["English"])}</div>', unsafe_allow_html=True)
     
-    st.markdown('<div class="disclaimer">⚠️ <b>Disclaimer:</b> This chatbot provides general legal information and not legal advice. Always consult with a qualified legal professional for specific legal matters.</div>', unsafe_allow_html=True)
+    disclaimer_content = {
+        "English": "⚠️ <b>Disclaimer:</b> This chatbot provides general legal information and not legal advice. Always consult with a qualified legal professional for specific legal matters.",
+        "Hindi": "⚠️ <b>अस्वीकरण:</b> यह चैटबॉट सामान्य कानूनी जानकारी प्रदान करता है, कानूनी सलाह नहीं। विशिष्ट कानूनी मामलों के लिए हमेशा योग्य कानूनी पेशेवर से सलाह लें।",
+        "Bengali": "⚠️ <b>দাবিত্যাग:</b> এই চ্যাটবট সাধারণ আইনি তথ্য প্রদান করে, আইনি পরামর্শ নয়। নির্দিষ্ট আইনি বিষয়ের জন্য সর্বদা যোগ্য আইনি পেশাদারের সাথে পরামর্শ করুন।"
+    }
+    st.markdown(f'<div class="disclaimer">{disclaimer_content.get(st.session_state.language, disclaimer_content["English"])}</div>', unsafe_allow_html=True)
     
     # Clear chat button with better styling
     col1, col2 = st.columns([1, 1])
     with col2:
-        if st.button("Clear Chat", type="primary"):
+        clear_button_text = {
+            "English": "Clear Chat",
+            "Hindi": "चैट साफ करें",
+            "Bengali": "চ্যাট সাফ করুন"
+        }
+        if st.button(clear_button_text.get(st.session_state.language, "Clear Chat"), type="primary"):
             st.session_state.messages = []
             st.rerun()
+    
+    # Language info
+    st.markdown('<div class="sidebar-header">Supported Languages</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-content">🇬🇧 English<br>🇮🇳 हिंदी (Hindi)<br>🇧🇩 বাংলা (Bengali)</div>', unsafe_allow_html=True)
