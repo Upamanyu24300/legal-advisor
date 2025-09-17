@@ -3,3 +3,7 @@ __pycache__
 .env
 run_app.bat
 temp.txt
+report.tex
+temp.docx
+ppt.docx
+MINOR_FINAL_PPT.pdf
