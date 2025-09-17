@@ -1,9 +1,21 @@
-chroma_db
-__pycache__
+# Database and vector store
+chroma_db/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
 .env
+
+# Temporary and build files
 run_app.bat
 temp.txt
-report.tex
 temp.docx
-ppt.docx
-MINOR_FINAL_PPT.pdf
+report.tex
+*.pdf
+*.docx
+
+# Data directory (optional - uncomment if you don't want to track data files)
+# data/
