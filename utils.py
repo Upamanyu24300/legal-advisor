@@ -168,18 +168,26 @@ Question: {question}"""
     response = llm.invoke(system_template)
     answer = response.content
     
-    # Process references
+    # Process references with deduplication
     references = []
+    seen_refs = set()
+    
     if retrieved_docs:
         # Use actual retrieved documents as references
         for doc in retrieved_docs[:4]:  # Top 4 references
             doc_name = extract_document_name(doc.metadata.get('source', ''))
             content_preview = doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
-            references.append({
-                "document": doc_name,
-                "content": content_preview,
-                "type": "retrieved"
-            })
+            
+            # Create unique identifier for deduplication
+            ref_key = (doc_name, content_preview)
+            
+            if ref_key not in seen_refs:
+                seen_refs.add(ref_key)
+                references.append({
+                    "document": doc_name,
+                    "content": content_preview,
+                    "type": "retrieved"
+                })
     else:
         # Generate synthetic reference if no chunks found but question is legal
         synthetic_ref = generate_synthetic_reference(question, answer, language)
